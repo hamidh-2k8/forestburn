@@ -11,10 +11,10 @@ class tree_status:
     ON_FIRE = 2
     ALIVE = 3
 
-side_len = 25
+side_len = 100
 scalar = 5
-
-fastmode = False
+fastmode = True
+profiler_enable = False
 
 forest_cmap = mcolors.ListedColormap([
     [0.23046875, 0.12109375, 0.0078125, 1.0],  # ground
@@ -43,6 +43,7 @@ def runSim(tree_spawn_prob, fire_tick_prob):
     init_start = time.time()
     
     burn_pcent_arr = []
+    firemaparr = []
     firemap = np.random.uniform(0, 1, (side_len, side_len))
     
     firemap = firemap < tree_spawn_prob
@@ -107,6 +108,7 @@ def runSim(tree_spawn_prob, fire_tick_prob):
                     next_firemap[x][y] = tree_status.DEAD
             
         firemap = next_firemap
+        firemaparr.append(firemap)
         
         num_burned = len(np.where(firemap == tree_status.DEAD)[0])
         pcent_burned = num_burned / count_lg * 100
@@ -126,24 +128,29 @@ def runSim(tree_spawn_prob, fire_tick_prob):
             progress.set_ydata(burn_pcent_arr)
             sim_axes[1].relim()
             sim_axes[1].autoscale_view()
-            sim_figure.canvas.draw_idle()
+            sim_figure.canvas.blit()
             sim_figure.canvas.flush_events()
         
         disp_end = time.time()
         profiler_arr[2] = disp_end - disp_start
     
+    sim_axes[0].cla()
     sim_axes[1].cla()
     
     
     looptime = np.sum(profiler_arr)
-    print(f"SIMULATION FINISHED: {str(int(tree_spawn_prob * 100))}% Spawn | {str(int(fire_tick_prob*100))}% Burn")
-    print(f"RESULT: Dimensionality: {dim} | Burned: {num_burned} ({int(pcent_burned)}%) | Iterations: {len(burn_pcent_arr)}")
-    print(f"Time Taken: {np.round(looptime, 2)}s ({looptime / len(burn_pcent_arr)} sec/iter)")
+    print("\x1b[2J\x1b[H", end="")
+    print("--------------------------------------------------------------------------------------------------------------------")
+    print(f"Running Forest Fire Simulation {'(FASTMODE)' if fastmode else '(SLOWMODE)'}")
+    print(f"Current Simulation: {str(int(tree_spawn_prob * 100))}% Spawn | {str(int(fire_tick_prob*100))}% Burn")
+    print(f"Result: Dimensionality: {dim} | Burned: {num_burned} ({int(pcent_burned)}%) | Iterations: {len(burn_pcent_arr)}")
+    print(f"Time Taken: {np.round(looptime * 1000, 2)}ms ({int(len(burn_pcent_arr) / looptime)} iterations/sec)")
+    
     
     return firemap, dim, num_burned, pcent_burned, len(burn_pcent_arr), looptime
 
-tree_prob_arr = np.arange(0.1, 0.9, 0.1)
-fire_spread_arr = np.arange(0.1, 0.9, 0.1)
+tree_prob_arr = np.arange(0.3, 1.0, 0.1)
+fire_spread_arr = np.arange(0.3, 1.0, 0.1)
 
 hide_res = len(tree_prob_arr) * len(fire_spread_arr) < 2 or len(tree_prob_arr) * len(fire_spread_arr) > 100
 
@@ -158,22 +165,26 @@ ips_arr = []
 summary_fig = plt.figure(figsize=(12, 4))
 summary_fig.suptitle("Data Summary")
 
-summary_2d = summary_fig.add_subplot(1, 4, 1)
+summary_2d = summary_fig.add_subplot(1, 2, 1)
 summary_2d.set_title("Results Heatmap")
 
-summary_3d = summary_fig.add_subplot(1, 4, 2, projection="3d")
+summary_3d = summary_fig.add_subplot(1, 2, 2, projection="3d")
 summary_3d.set_title("Results Scatterplot")
 
-time_graph = summary_fig.add_subplot(1, 4, 3)
-time_graph.set_title("Sim Loop Time")
-time_graph.set_xlabel("Simulation Index")
-time_graph.set_ylabel("Avg. Iterations/Sec")
+if profiler_enable:
+    profiler_fig = plt.figure(figsize=(12, 4))
+    profiler_fig.suptitle("Performance")
 
-profiler_graph = summary_fig.add_subplot(1, 4, 4)
+    time_graph = profiler_fig.add_subplot(1, 2, 1)
+    time_graph.set_title("Sim Loop Time")
+    time_graph.set_xlabel("Simulation Index")
+    time_graph.set_ylabel("Avg. Iterations/Sec")
+
+    time_pie = profiler_fig.add_subplot(1, 2, 2)
+    time_plot, = time_graph.plot(range(len(ips_arr)), ips_arr)
 
 summary_arr = np.zeros((len(fire_spread_arr), len(tree_prob_arr)))
 X, Y = np.meshgrid(np.arange(0, len(fire_spread_arr), 1), np.arange(0, len(tree_prob_arr), 1))
-time_plot, = time_graph.plot(range(len(ips_arr)), ips_arr)
 
 
 for i in range(len(tree_prob_arr)):
@@ -181,21 +192,25 @@ for i in range(len(tree_prob_arr)):
         
         res_data, dim, num_burned, pcent_burned, iterations, elapsedtime = runSim(tree_prob_arr[i], fire_spread_arr[j])
         
+        print(f"{np.ceil((i*len(tree_prob_arr) + j + 1) / (len(tree_prob_arr) * len(fire_spread_arr)) * 100)}% COMPLETE")
+        print("--------------------------------------------------------------------------------------------------------------------")
+        
         summary_arr[j][i] = pcent_burned
-        ips_arr.append(iterations / elapsedtime)
+        ips_arr.append(iterations / (profiler_arr[0] + profiler_arr[1]))
         
-        time_plot.set_xdata(range(len(ips_arr)))
-        time_plot.set_ydata(ips_arr)
-        time_graph.relim()
-        time_graph.autoscale_view()
-        
-        profiler_graph.cla()
-        profiler_graph.pie(profiler_arr, labels=["Init", "Calc", "Disp"], autopct='%1.1f%%')
-        profiler_graph.set_title("Profiler")
+        if profiler_enable:
+            time_plot.set_xdata(range(len(ips_arr)))
+            time_plot.set_ydata(ips_arr)
+            time_graph.relim()
+            time_graph.autoscale_view()
+            
+            time_pie.cla()
+            time_pie.pie(profiler_arr, labels=["Init", "Calc", "Disp"], autopct='%1.1f%%')
+            time_pie.set_title("Profiler")
         
         if not hide_res:    
             res_axes[j][i].imshow(res_data, cmap=forest_cmap, vmin=tree_status.NOT_PRESENT, vmax=tree_status.ALIVE)
-            res_axes[j][i].annotate(f"T: {tree_prob_arr[i]}\nF: {fire_spread_arr[j]}\nD: {np.round(dim, 2)}\nB: {int(pcent_burned)}%\nI: {iterations}",
+            res_axes[j][i].annotate(f"T: {np.round(tree_prob_arr[i], 2)}\nF: {np.round(fire_spread_arr[j], 2)}\nD: {np.round(dim, 2)}\nB: {int(pcent_burned)}%\nI: {iterations}",
                 xy=(0.75,0.5), xycoords='axes fraction',
                 textcoords='offset points',
                 size=8,
@@ -211,5 +226,8 @@ for i in range(len(tree_prob_arr)):
 summary_3d.scatter(X, Y, summary_arr)
         
 plt.close(sim_figure)
+if profiler_enable: plt.close(profiler_fig)
 
-plt.show(block=True)
+plt.show()
+
+input("Press [ENTER] to exit.")
