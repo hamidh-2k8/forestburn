@@ -1,5 +1,6 @@
 import time
 import random
+import sys, os
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
@@ -11,10 +12,13 @@ class tree_status:
     ON_FIRE = 2
     ALIVE = 3
 
-side_len = 100
+side_len = 50
 scalar = 5
 fastmode = True
 profiler_enable = False
+
+tree_prob_arr = np.arange(0.4, 0.8, 0.01)
+fire_spread_arr = np.arange(0.4, 0.8, 0.01)
 
 forest_cmap = mcolors.ListedColormap([
     [0.23046875, 0.12109375, 0.0078125, 1.0],  # ground
@@ -26,6 +30,8 @@ forest_cmap = mcolors.ListedColormap([
 profiler_arr = [1, 1, 1] #init, calc, display
 
 assert scalar > 1, "Dimensionality Scalar musc be greater than 1"
+assert len(tree_prob_arr) > 1, "Range of Tree Densities must be greater than 1"
+assert len(fire_spread_arr) > 1, "Range of Fire Spread values must be greater than 1"
 
 plt.ion()
 mplstyle.use('fast')
@@ -43,7 +49,6 @@ def runSim(tree_spawn_prob, fire_tick_prob):
     init_start = time.time()
     
     burn_pcent_arr = []
-    firemaparr = []
     firemap = np.random.uniform(0, 1, (side_len, side_len))
     
     firemap = firemap < tree_spawn_prob
@@ -107,9 +112,7 @@ def runSim(tree_spawn_prob, fire_tick_prob):
                     
                     next_firemap[x][y] = tree_status.DEAD
             
-        firemap = next_firemap
-        firemaparr.append(firemap)
-        
+        firemap = next_firemap        
         num_burned = len(np.where(firemap == tree_status.DEAD)[0])
         pcent_burned = num_burned / count_lg * 100
         
@@ -144,13 +147,10 @@ def runSim(tree_spawn_prob, fire_tick_prob):
     print(f"Running Forest Fire Simulation {'(FASTMODE)' if fastmode else '(SLOWMODE)'}")
     print(f"Current Simulation: {str(int(tree_spawn_prob * 100))}% Spawn | {str(int(fire_tick_prob*100))}% Burn")
     print(f"Result: Dimensionality: {dim} | Burned: {num_burned} ({int(pcent_burned)}%) | Iterations: {len(burn_pcent_arr)}")
-    print(f"Time Taken: {np.round(looptime * 1000, 2)}ms ({int(len(burn_pcent_arr) / looptime)} iterations/sec)")
+    print(f"Time Taken: {np.round(looptime * 1000, 2)}ms ({int(len(burn_pcent_arr) / (profiler_arr[0] + profiler_arr[1]))} iterations/sec)")
     
     
     return firemap, dim, num_burned, pcent_burned, len(burn_pcent_arr), looptime
-
-tree_prob_arr = np.arange(0.3, 1.0, 0.1)
-fire_spread_arr = np.arange(0.3, 1.0, 0.1)
 
 hide_res = len(tree_prob_arr) * len(fire_spread_arr) < 2 or len(tree_prob_arr) * len(fire_spread_arr) > 100
 
@@ -229,5 +229,21 @@ plt.close(sim_figure)
 if profiler_enable: plt.close(profiler_fig)
 
 plt.show()
+
+np.set_printoptions(precision=2, threshold=sys.maxsize, suppress=True, linewidth=sys.maxsize)
+
+desmosdata = ""
+
+desmosdata += f"X={repr(np.tile(range(len(tree_prob_arr)), len(fire_spread_arr))).replace('array(', '').replace(')', '').strip(os.linesep)}" + os.linesep
+desmosdata += f"Y={repr(np.repeat(range(len(fire_spread_arr)), len(tree_prob_arr))).replace('array(', '').replace(')', '').strip(os.linesep)}" + os.linesep
+desmosdata += f"Z={repr(summary_arr.flatten() / 10).replace('array(', '').replace(')', '').strip(os.linesep)}" + os.linesep
+desmosdata += "(X, Y, Z)"
+
+try: desmosfile = open('desmos.dat', "x")
+except FileExistsError: desmosfile = open('desmos.dat', "w")
+    
+desmosfile.write(desmosdata)
+desmosfile.close()
+
 
 input("Press [ENTER] to exit.")
